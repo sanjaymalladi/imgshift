@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imgshift"
+version = "0.1.0"
+description = "High-performance image converter with advanced SVG rasterization and format handling."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "Sanjay", email = "malladisanjay29@gmail.com" }
+]
+keywords = ["image", "converter", "svg", "png", "pdf", "jpeg", "rasterize", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+]
+dependencies = [
+    "pypng>=0.20220715.0",
+    "Pillow>=10.0.0",
+    "PyMuPDF>=1.23.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.1.0",
+    "build",
+    "twine",
+]
+
+[project.scripts]
+imgshift = "imgshift.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sanjay/imgshift"
+Repository = "https://github.com/sanjay/imgshift"
+Issues = "https://github.com/sanjay/imgshift/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imgshift"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
