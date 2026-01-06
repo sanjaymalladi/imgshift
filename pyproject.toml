@@ -43,9 +43,9 @@ dev = [
 imgshift = "imgshift.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/sanjay/imgshift"
-Repository = "https://github.com/sanjay/imgshift"
-Issues = "https://github.com/sanjay/imgshift/issues"
+Homepage = "https://github.com/sanjaymalladi/imgshift"
+Repository = "https://github.com/sanjaymalladi/imgshift"
+Issues = "https://github.com/sanjaymalladi/imgshift/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/imgshift"]
