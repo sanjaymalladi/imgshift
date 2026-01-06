@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "imgshift"
-version = "0.1.0"
+version = "0.1.1"
 description = "High-performance image converter with advanced SVG rasterization and format handling."
 readme = "README.md"
 license = "MIT"
