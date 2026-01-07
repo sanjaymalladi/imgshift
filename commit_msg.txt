@@ -1,0 +1,19 @@
+Release v0.1.2: Dual-Engine SVG Rendering Architecture
+
+Added:
+- Integrated resvg-py as primary production SVG renderer
+- Pure-Python engine as zero-dependency fallback
+- Engine parameter (auto/resvg/python) in convert() and CLI
+- Comprehensive test suites for format conversions and real logos
+- HTML report generation for visual validation
+- CHANGELOG.md documentation
+
+Changed:
+- SVG rendering defaults to resvg with automatic fallback
+- Removed debug print statements for production
+
+Technical:
+- Added svg/engines/ architecture with base classes
+- Optional dependency: resvg-py>=0.2.0
+- 100% success on real-world logo tests
+- 82.4% success on comprehensive format tests

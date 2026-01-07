@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "imgshift"
-version = "0.1.1"
-description = "High-performance image converter with advanced SVG rasterization and format handling."
+version = "0.1.2"
+description = "Fast image conversion library with exceptional SVG support"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
@@ -32,6 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+svg = [
+    "resvg-py>=0.2.0",
+]
 dev = [
     "pytest>=7.0.0",
     "ruff>=0.1.0",
@@ -41,6 +44,7 @@ dev = [
 
 [project.scripts]
 imgshift = "imgshift.cli:main"
+imgshift-upscale = "imgshift.cli:upscale_main"
 
 [project.urls]
 Homepage = "https://github.com/sanjaymalladi/imgshift"

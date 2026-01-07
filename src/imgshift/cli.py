@@ -95,6 +95,13 @@ def main():
     )
     
     parser.add_argument(
+        '--engine',
+        choices=['auto', 'resvg', 'python'],
+        default='auto',
+        help='SVG rendering engine: auto (try resvg, fallback to python), resvg (production), or python (experimental)'
+    )
+    
+    parser.add_argument(
         '-v', '--version',
         action='store_true',
         help='Show version and exit'
@@ -153,7 +160,8 @@ def _single_convert(args, background):
         quality=args.quality,
         dpi=args.dpi,
         page=args.page,
-        background=background
+        background=background,
+        engine=args.engine
     )
     
     print('Done!')
@@ -168,7 +176,8 @@ def _multi_to_one(args, background):
         args.output,
         quality=args.quality,
         dpi=args.dpi,
-        background=background
+        background=background,
+        engine=args.engine
     )
     
     print('Done!')
@@ -218,7 +227,8 @@ def _batch_convert(args, background):
                 quality=args.quality,
                 dpi=args.dpi,
                 page=args.page,
-                background=background
+                background=background,
+                engine=args.engine
             )
             
             converted += 1
@@ -226,5 +236,104 @@ def _batch_convert(args, background):
     print(f'Converted {converted} file(s)')
 
 
+def upscale_main():
+    """CLI entry point for upscale command."""
+    from imgshift.core import upscale
+    
+    parser = argparse.ArgumentParser(
+        prog='imgshift-upscale',
+        description='Upscale images using high-quality interpolation (no AI).',
+        epilog='Examples:\n'
+               '  imgshift-upscale logo.png logo_2x.png --scale 2\n'
+               '  imgshift-upscale icon.webp icon_hd.png --width 1024\n'
+               '  imgshift-upscale photo.jpg photo_4x.jpg --scale 4 --method bicubic\n',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument(
+        'input',
+        help='Input image file (PNG, WEBP, JPEG, etc.)'
+    )
+    
+    parser.add_argument(
+        'output',
+        help='Output image file'
+    )
+    
+    parser.add_argument(
+        '-s', '--scale',
+        type=float,
+        metavar='N',
+        help='Scale factor (e.g., 2 for 2x, 4 for 4x)'
+    )
+    
+    parser.add_argument(
+        '-w', '--width',
+        type=int,
+        metavar='PX',
+        help='Target width in pixels (maintains aspect ratio if height not specified)'
+    )
+    
+    parser.add_argument(
+        '-H', '--height',
+        type=int,
+        metavar='PX',
+        help='Target height in pixels (maintains aspect ratio if width not specified)'
+    )
+    
+    parser.add_argument(
+        '-m', '--method',
+        default='lanczos',
+        choices=['lanczos', 'bicubic', 'bilinear', 'nearest'],
+        help='Resampling method (default: lanczos - sharpest for logos)'
+    )
+    
+    parser.add_argument(
+        '-q', '--quality',
+        type=int,
+        default=95,
+        metavar='N',
+        help='Output quality 1-100 for lossy formats (default: 95)'
+    )
+    
+    parser.add_argument(
+        '-v', '--version',
+        action='store_true',
+        help='Show version and exit'
+    )
+    
+    args = parser.parse_args()
+    
+    if args.version:
+        from imgshift import __version__
+        print(f'imgshift {__version__}')
+        return 0
+    
+    if not args.scale and not args.width and not args.height:
+        parser.error('Must specify --scale or --width/--height')
+        return 1
+    
+    try:
+        print(f'Upscaling {args.input} -> {args.output}')
+        
+        upscale(
+            args.input,
+            args.output,
+            scale=args.scale,
+            width=args.width,
+            height=args.height,
+            method=args.method,
+            quality=args.quality
+        )
+        
+        print('Done!')
+        return 0
+        
+    except Exception as e:
+        print(f'Error: {e}', file=sys.stderr)
+        return 1
+
+
 if __name__ == '__main__':
     sys.exit(main())
+

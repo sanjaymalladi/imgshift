@@ -57,6 +57,7 @@ def parse_color(color: str) -> Tuple[int, int, int, int]:
         - Named colors: red, blue, green, etc.
         - rgb(r, g, b), rgba(r, g, b, a)
         - none (transparent)
+        - url() references (gradients) - returns a default color
     
     Args:
         color: Color string
@@ -68,6 +69,12 @@ def parse_color(color: str) -> Tuple[int, int, int, int]:
         return (0, 0, 0, 0)
     
     color = color.strip().lower()
+    
+    # Handle url() references (gradients, patterns) - return a fallback color
+    # This is a limitation: we can't render gradients, so we use a neutral gray
+    if color.startswith('url('):
+        # Return a visible fallback color instead of black
+        return (128, 128, 128, 255)
     
     # Named colors
     named_colors = {

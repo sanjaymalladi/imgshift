@@ -8,9 +8,12 @@ import xml.etree.ElementTree as ET
 from typing import List, Tuple, Optional, Dict
 from pathlib import Path
 from imgshift.svg.elements import (
-    Element, Rect, Circle, Ellipse, Line, Polyline, Polygon, Path,
+    Element, Rect, Circle, Ellipse, Line, Polyline, Polygon, Path, Text,
     Style, parse_points
 )
+from imgshift.svg.paint import GradientStop, LinearGradient, RadialGradient
+from imgshift.utils import parse_color
+
 from imgshift.svg.transforms import Matrix, parse_transform
 
 
@@ -23,6 +26,7 @@ class SVGDocument:
         self.viewbox: Optional[Tuple[float, float, float, float]] = None
         self.elements: List[Element] = []
         self.background: Optional[Tuple[int, int, int, int]] = None
+        self.defs: Dict[str, Any] = {}  # ID -> Paint/Element mapping
     
     def get_size(self, target_width: Optional[int] = None, 
                  target_height: Optional[int] = None,
@@ -190,6 +194,100 @@ class SVGParser:
         except ValueError:
             return 0
     
+    def _parse_stops(self, elem: ET.Element) -> List[GradientStop]:
+        """Parse gradient stops."""
+        stops = []
+        for stop in elem:
+            tag = stop.tag.replace(self.SVG_NS, '')
+            if tag == 'stop':
+                attrs = dict(stop.attrib)
+                
+                # Parse offset
+                offset_str = attrs.get('offset', '0').strip()
+                if offset_str.endswith('%'):
+                    offset = float(offset_str[:-1]) / 100.0
+                else:
+                    offset = float(offset_str)
+                
+                # Parse color
+                color_str = attrs.get('stop-color')
+                style_str = attrs.get('style', '')
+                
+                # Style overrides attribute
+                if style_str:
+                    for item in style_str.split(';'):
+                        if ':' in item:
+                            k, v = item.split(':', 1)
+                            if k.strip() == 'stop-color':
+                                color_str = v.strip()
+                
+                if color_str:
+                    r, g, b, a = parse_color(color_str)
+                    
+                    # Apply stop-opacity
+                    opacity = attrs.get('stop-opacity', '1')
+                    if style_str:
+                         for item in style_str.split(';'):
+                            if ':' in item:
+                                k, v = item.split(':', 1)
+                                if k.strip() == 'stop-opacity':
+                                    opacity = v.strip()
+                    
+                    try:
+                        a = int(a * float(opacity))
+                    except ValueError:
+                        pass
+                    
+                    stops.append(GradientStop(offset, (r, g, b, a)))
+        return stops
+
+    def _parse_linear_gradient(self, elem: ET.Element, attrs: Dict[str, str]):
+        """Parse linear gradient and store in defs."""
+        gid = attrs.get('id')
+        if not gid:
+            return
+            
+        x1 = self._parse_length(attrs.get('x1', '0%'))
+        y1 = self._parse_length(attrs.get('y1', '0%'))
+        x2 = self._parse_length(attrs.get('x2', '100%'))
+        y2 = self._parse_length(attrs.get('y2', '0%'))
+        
+        stops = self._parse_stops(elem)
+        
+        # Handle gradientTransform
+        transform = Matrix.identity()
+        if 'gradientTransform' in attrs:
+            transform = parse_transform(attrs['gradientTransform'])
+            
+        units = attrs.get('gradientUnits', 'objectBoundingBox')
+            
+        gradient = LinearGradient(x1, y1, x2, y2, stops, transform=transform, units=units)
+        self.doc.defs[gid] = gradient
+
+    def _parse_radial_gradient(self, elem: ET.Element, attrs: Dict[str, str]):
+        """Parse radial gradient and store in defs."""
+        gid = attrs.get('id')
+        if not gid:
+            return
+            
+        cx = self._parse_length(attrs.get('cx', '50%'))
+        cy = self._parse_length(attrs.get('cy', '50%'))
+        r = self._parse_length(attrs.get('r', '50%'))
+        fx = self._parse_length(attrs.get('fx', str(cx)))
+        fy = self._parse_length(attrs.get('fy', str(cy)))
+        
+        stops = self._parse_stops(elem)
+        
+        # Handle gradientTransform
+        transform = Matrix.identity()
+        if 'gradientTransform' in attrs:
+            transform = parse_transform(attrs['gradientTransform'])
+            
+        units = attrs.get('gradientUnits', 'objectBoundingBox')
+            
+        gradient = RadialGradient(cx, cy, r, fx, fy, stops, transform=transform, units=units)
+        self.doc.defs[gid] = gradient
+
     def _parse_elements(self, parent: ET.Element, parent_transform: Matrix, 
                         parent_style: Optional[Style]):
         """Recursively parse SVG elements."""
@@ -211,6 +309,14 @@ class SVGParser:
             # Create element based on tag
             element = None
             
+            if tag == 'linearGradient':
+                self._parse_linear_gradient(elem, attrs)
+                continue
+            
+            elif tag == 'radialGradient':
+                self._parse_radial_gradient(elem, attrs)
+                continue
+                
             if tag == 'rect':
                 element = Rect(
                     transform=combined_transform,
@@ -271,6 +377,17 @@ class SVGParser:
                     transform=combined_transform,
                     style=style,
                     d=attrs.get('d', ''),
+                )
+            
+            elif tag == 'text':
+                element = Text(
+                    transform=combined_transform,
+                    style=style,
+                    x=float(attrs.get('x', 0)),
+                    y=float(attrs.get('y', 0)),
+                    text=elem.text or "",
+                    font_family=attrs.get('font-family', 'sans-serif'),
+                    font_size=attrs.get('font-size', '12'),
                 )
             
             elif tag in ('g', 'svg', 'defs', 'symbol', 'use'):

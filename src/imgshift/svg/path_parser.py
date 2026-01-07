@@ -110,18 +110,50 @@ def parse_path(d: str) -> List[PathCommand]:
     return commands
 
 
-def path_to_points(commands: List[PathCommand], resolution: int = 20) -> List[List[Tuple[float, float]]]:
+def calculate_winding_direction(polygon: List[Tuple[float, float]]) -> int:
     """
-    Convert path commands to a list of subpaths (polygons).
+    Calculate winding direction of a polygon using the shoelace formula.
+    
+    Returns:
+        +1 for clockwise winding
+        -1 for counterclockwise winding
+        +1 if polygon is degenerate (area = 0)
+    """
+    if len(polygon) < 3:
+        return 1  # Degenerate case
+    
+    # Shoelace formula for signed area
+    signed_area = 0.0
+    for i in range(len(polygon)):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % len(polygon)]
+        signed_area += (x2 - x1) * (y2 + y1)
+    
+    # In SVG coordinate system (Y increases downward):
+    # Negative area = clockwise (normal outer paths)
+    # Positive area = counterclockwise (holes)
+    if signed_area < 0:
+        return 1  # Clockwise
+    elif signed_area > 0:
+        return -1  # Counterclockwise
+    else:
+        return 1  # Degenerate (zero area)
+
+
+def path_to_points(commands: List[PathCommand], resolution: int = 20) -> List[Tuple[List[Tuple[float, float]], int]]:
+    """
+    Convert path commands to a list of subpaths (polygons) with winding direction.
     
     Bezier curves are approximated with line segments.
     
     Args:
         commands: List of PathCommand from parse_path()
-        resolution: Number of segments per bezier curve
+        resolution: Number of segments per bezier curve (ignored for adaptive bezier)
         
     Returns:
-        List of subpaths, where each subpath is a list of (x, y) points
+        List of (polygon, direction) tuples where:
+        - polygon: List of (x, y) points
+        - direction: +1 for clockwise, -1 for counterclockwise
     """
     subpaths = []
     current_path: List[Tuple[float, float]] = []
@@ -139,7 +171,8 @@ def path_to_points(commands: List[PathCommand], resolution: int = 20) -> List[Li
         if command == 'M':
             # Start new subpath
             if current_path:
-                subpaths.append(current_path)
+                direction = calculate_winding_direction(current_path)
+                subpaths.append((current_path, direction))
             
             if is_relative:
                 x += args[0]
@@ -268,45 +301,88 @@ def path_to_points(commands: List[PathCommand], resolution: int = 20) -> List[Li
             x, y = start_x, start_y
             last_control = None
     
+    # Add final subpath with winding direction
     if current_path:
-        subpaths.append(current_path)
+        direction = calculate_winding_direction(current_path)
+        subpaths.append((current_path, direction))
     
     return subpaths
 
+def distance_sq(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+    return (p1[0] - p2[0])**2 + (p1[1] - p2[1])**2
 
 def cubic_bezier(x0: float, y0: float, x1: float, y1: float, 
                  x2: float, y2: float, x3: float, y3: float, 
-                 segments: int) -> List[Tuple[float, float]]:
-    """Generate points along a cubic bezier curve."""
-    points = []
-    for i in range(segments + 1):
-        t = i / segments
-        t2 = t * t
-        t3 = t2 * t
-        mt = 1 - t
-        mt2 = mt * mt
-        mt3 = mt2 * mt
-        
-        px = mt3 * x0 + 3 * mt2 * t * x1 + 3 * mt * t2 * x2 + t3 * x3
-        py = mt3 * y0 + 3 * mt2 * t * y1 + 3 * mt * t2 * y2 + t3 * y3
-        points.append((px, py))
-    
+                 resolution: int = 10) -> List[Tuple[float, float]]:
+    """
+    Generate points for a cubic bezier curve using adaptive subdivision.
+    resolution param is kept for compatibility but ignores it in favor of adaptive tolerance.
+    """
+    points = [(x0, y0)]
+    # Use a fixed tolerance suitable for pixel rendering
+    _recursive_cubic_bezier(x0, y0, x1, y1, x2, y2, x3, y3, points, distance_tolerance_sq=0.5)
+    points.append((x3, y3))
     return points
 
-
-def quadratic_bezier(x0: float, y0: float, x1: float, y1: float,
-                     x2: float, y2: float, segments: int) -> List[Tuple[float, float]]:
-    """Generate points along a quadratic bezier curve."""
-    points = []
-    for i in range(segments + 1):
-        t = i / segments
-        mt = 1 - t
-        
-        px = mt * mt * x0 + 2 * mt * t * x1 + t * t * x2
-        py = mt * mt * y0 + 2 * mt * t * y1 + t * t * y2
-        points.append((px, py))
+def _recursive_cubic_bezier(x0, y0, x1, y1, x2, y2, x3, y3, points, distance_tolerance_sq):
+    """Recursively subdivide Bezier curve until flat."""
     
-    return points
+    # Midpoints
+    x01 = (x0 + x1) / 2
+    y01 = (y0 + y1) / 2
+    x12 = (x1 + x2) / 2
+    y12 = (y1 + y2) / 2
+    x23 = (x2 + x3) / 2
+    y23 = (y2 + y3) / 2
+    
+    x012 = (x01 + x12) / 2
+    y012 = (y01 + y12) / 2
+    x123 = (x12 + x23) / 2
+    y123 = (y12 + y23) / 2
+    
+    x0123 = (x012 + x123) / 2
+    y0123 = (y012 + y123) / 2
+    
+    dx = x3 - x0
+    dy = y3 - y0
+    d_sq = dx*dx + dy*dy
+    
+    flat = False
+    
+    if d_sq < 1e-6:
+        # Endpoints are very close
+        d1 = distance_sq((x0, y0), (x1, y1))
+        d2 = distance_sq((x0, y0), (x2, y2))
+        if d1 < distance_tolerance_sq and d2 < distance_tolerance_sq:
+            flat = True
+    else:
+        # Distance from point to line (approximation)
+        # Using control points distance to baseline
+        # Robust flatness test is expensive, use simple subdivision limit
+        
+        # Simple test: if midpoint of curve is close to midpoint of baseline
+        mx = (x0 + x3) / 2
+        my = (y0 + y3) / 2
+        dist_sq = (x0123 - mx)**2 + (y0123 - my)**2
+        
+        if dist_sq < 0.1: # Tolerance
+             flat = True
+
+    if flat:
+        return
+
+    _recursive_cubic_bezier(x0, y0, x01, y01, x012, y012, x0123, y0123, points, distance_tolerance_sq)
+    points.append((x0123, y0123))
+    _recursive_cubic_bezier(x0123, y0123, x123, y123, x23, y23, x3, y3, points, distance_tolerance_sq)
+
+
+def quadratic_bezier(x0: float, y0: float, x1: float, y1: float, x2: float, y2: float, resolution: int = 10) -> List[Tuple[float, float]]:
+    """Convert quadratic to cubic and use cubic solver."""
+    cx1 = x0 + (2/3) * (x1 - x0)
+    cy1 = y0 + (2/3) * (y1 - y0)
+    cx2 = x2 + (2/3) * (x1 - x2)
+    cy2 = y2 + (2/3) * (y1 - y2)
+    return cubic_bezier(x0, y0, cx1, cy1, cx2, cy2, x2, y2, resolution)
 
 
 def arc_to_bezier(x0: float, y0: float, rx: float, ry: float,
@@ -376,6 +452,8 @@ def arc_to_bezier(x0: float, y0: float, rx: float, ry: float,
         dtheta += 2 * math.pi
     
     # Generate points
+    # For arc, we still use fixed segments for now as adaptive arc subdivision is more complex
+    # and arcs are usually smaller parts
     points = []
     for i in range(segments + 1):
         t = theta1 + (i / segments) * dtheta

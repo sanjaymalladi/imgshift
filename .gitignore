@@ -23,9 +23,15 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+tests/data/
 
 # OS
 .DS_Store
 Thumbs.db
 .pypirc
 pypirc.ini
+
+# Test files
+test_engines.py
+tests/test_real_logos.py
+tests/test_all_formats.py

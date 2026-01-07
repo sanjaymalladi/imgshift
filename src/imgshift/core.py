@@ -22,6 +22,7 @@ def convert(source: Union[str, Path, List[str], List[Path]],
             dpi: int = 150,
             page: Optional[int] = None,
             background: Tuple[int, int, int, int] = (255, 255, 255, 255),
+            engine: str = "auto",
             **kwargs) -> None:
     """
     Convert image(s) from one format to another.
@@ -35,6 +36,8 @@ def convert(source: Union[str, Path, List[str], List[Path]],
         dpi: DPI for PDF/SVG rendering (default 150)
         page: Specific PDF page to convert (0-indexed, None for all)
         background: Background color for SVG rendering (R, G, B, A)
+        engine: SVG rendering engine - 'auto' (try resvg, fallback to python), 
+                'resvg' (production), or 'python' (experimental fallback)
         **kwargs: Additional format-specific options
         
     Examples:
@@ -43,6 +46,9 @@ def convert(source: Union[str, Path, List[str], List[Path]],
         
         # SVG to PNG with size
         convert("icon.svg", "icon.png", width=512)
+        
+        # Use specific engine
+        convert("logo.svg", "logo.png", engine="resvg")
         
         # PNG to JPEG with quality
         convert("photo.png", "photo.jpg", quality=90)
@@ -58,7 +64,7 @@ def convert(source: Union[str, Path, List[str], List[Path]],
     
     # Handle multiple source files (for creating PDF)
     if isinstance(source, list):
-        _convert_multiple_to_pdf(source, target_path, dpi)
+        _convert_multiple_to_pdf(source, target_path, dpi, engine)
         return
     
     source_path = Path(source)
@@ -66,7 +72,7 @@ def convert(source: Union[str, Path, List[str], List[Path]],
     
     # Load source image
     rows, src_width, src_height = _load_image(
-        source_path, source_format, width, height, dpi, page, background
+        source_path, source_format, width, height, dpi, page, background, engine
     )
     
     # Apply resize if needed
@@ -77,21 +83,148 @@ def convert(source: Union[str, Path, List[str], List[Path]],
     _save_image(target_path, target_format, rows, src_width, src_height, quality, dpi, **kwargs)
 
 
+def upscale(source: Union[str, Path],
+            target: Union[str, Path],
+            scale: Optional[float] = None,
+            width: Optional[int] = None,
+            height: Optional[int] = None,
+            method: str = 'lanczos',
+            quality: int = 95,
+            **kwargs) -> None:
+    """
+    Upscale an image to higher resolution using high-quality interpolation.
+    
+    This uses traditional resampling algorithms (no AI) for clean, sharp upscaling.
+    Best for logos, icons, and graphics where you want to preserve exact appearance.
+    
+    Args:
+        source: Source image path (PNG, WEBP, JPEG, etc.)
+        target: Target image path
+        scale: Scale factor (e.g., 2.0 for 2x, 4.0 for 4x). Either scale or width/height required.
+        width: Target width in pixels (optional, maintains aspect ratio if height not specified)
+        height: Target height in pixels (optional, maintains aspect ratio if width not specified)
+        method: Resampling method - 'lanczos' (sharpest), 'bicubic', 'bilinear', 'nearest'
+        quality: Output quality 1-100 for lossy formats (default 95)
+        **kwargs: Additional format-specific options
+        
+    Examples:
+        # Upscale 2x with Lanczos (best for logos)
+        upscale("logo_small.png", "logo_large.png", scale=2)
+        
+        # Upscale to specific dimensions
+        upscale("icon.webp", "icon_hd.png", width=1024, height=1024)
+        
+        # Upscale 4x with bicubic
+        upscale("photo.jpg", "photo_4x.jpg", scale=4, method='bicubic')
+        
+    Raises:
+        ValueError: If neither scale nor width/height is specified
+        ValueError: If source format is not supported
+    """
+    from PIL import Image as PILImage
+    
+    # Validate inputs
+    if scale is None and width is None and height is None:
+        raise ValueError("Must specify either 'scale' or 'width'/'height'")
+    
+    # Resampling method mapping
+    resampling_methods = {
+        'lanczos': PILImage.Resampling.LANCZOS,
+        'bicubic': PILImage.Resampling.BICUBIC,
+        'bilinear': PILImage.Resampling.BILINEAR,
+        'nearest': PILImage.Resampling.NEAREST,
+    }
+    
+    if method.lower() not in resampling_methods:
+        raise ValueError(f"Unknown method '{method}'. Use: lanczos, bicubic, bilinear, nearest")
+    
+    resample = resampling_methods[method.lower()]
+    
+    # Load source image with Pillow
+    source_path = Path(source)
+    target_path = Path(target)
+    
+    img = PILImage.open(source_path)
+    
+    # Preserve transparency if present
+    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+        img = img.convert('RGBA')
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
+    
+    orig_width, orig_height = img.size
+    
+    # Calculate target dimensions
+    if scale is not None:
+        new_width = int(orig_width * scale)
+        new_height = int(orig_height * scale)
+    elif width is not None and height is not None:
+        new_width = width
+        new_height = height
+    elif width is not None:
+        new_width = width
+        new_height = int(orig_height * (width / orig_width))
+    else:  # height is not None
+        new_height = height
+        new_width = int(orig_width * (height / orig_height))
+    
+    # Ensure minimum size
+    new_width = max(1, new_width)
+    new_height = max(1, new_height)
+    
+    # Perform upscale
+    upscaled = img.resize((new_width, new_height), resample=resample)
+    
+    # Determine output format
+    target_ext = target_path.suffix.lower()
+    
+    # Save with appropriate settings
+    save_kwargs = {}
+    
+    if target_ext in ('.jpg', '.jpeg'):
+        if upscaled.mode == 'RGBA':
+            # JPEG doesn't support transparency - composite onto white
+            background = PILImage.new('RGB', upscaled.size, (255, 255, 255))
+            background.paste(upscaled, mask=upscaled.split()[3])
+            upscaled = background
+        save_kwargs['quality'] = quality
+        save_kwargs['optimize'] = True
+    elif target_ext == '.png':
+        save_kwargs['optimize'] = True
+    elif target_ext == '.webp':
+        save_kwargs['quality'] = quality
+        save_kwargs['lossless'] = quality >= 100
+    
+    # Merge any additional kwargs
+    save_kwargs.update(kwargs)
+    
+    upscaled.save(target_path, **save_kwargs)
+
+
 def _load_image(source: Path, format: str, 
                 width: Optional[int], height: Optional[int],
                 dpi: int, page: Optional[int],
-                background: Tuple[int, int, int, int]) -> Tuple[List[List[Tuple[int, int, int, int]]], int, int]:
+                background: Tuple[int, int, int, int],
+                engine: str = "auto") -> Tuple[List[List[Tuple[int, int, int, int]]], int, int]:
     """Load an image from a file."""
     
     if format == '.svg':
-        # Use our custom SVG renderer
-        parser = SVGParser()
-        doc = parser.parse(source)
+        # Use new dual-engine dispatcher
+        from imgshift.svg.render import render_svg
         
-        rasterizer = Rasterizer(antialias=True)
-        buffer = rasterizer.render(doc, width, height, background)
+        rgba_image = render_svg(str(source), width=width, height=height, engine=engine)
         
-        return buffer.get_rows(), buffer.width, buffer.height
+        # Convert RGBAImage to rows format
+        rows = []
+        for y in range(rgba_image.height):
+            row = []
+            for x in range(rgba_image.width):
+                idx = (y * rgba_image.width + x) * 4
+                r, g, b, a = rgba_image.data[idx:idx+4]
+                row.append((r, g, b, a))
+            rows.append(row)
+        
+        return rows, rgba_image.width, rgba_image.height
     
     elif format == '.pdf':
         # Use PDF handler
@@ -142,7 +275,7 @@ def _save_image(dest: Path, format: str,
 
 
 def _convert_multiple_to_pdf(sources: List[Union[str, Path]], 
-                             dest: Path, dpi: int):
+                             dest: Path, dpi: int, engine: str = "auto"):
     """Convert multiple images to a multi-page PDF."""
     images = []
     
@@ -150,7 +283,7 @@ def _convert_multiple_to_pdf(sources: List[Union[str, Path]],
         source_path = Path(source)
         source_format = detect_format(source_path)
         rows, width, height = _load_image(
-            source_path, source_format, None, None, dpi, None, (255, 255, 255, 255)
+            source_path, source_format, None, None, dpi, None, (255, 255, 255, 255), engine
         )
         images.append((rows, width, height))
     

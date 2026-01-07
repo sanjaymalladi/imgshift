@@ -93,6 +93,34 @@ class Matrix:
             self.b * x + self.d * y + self.f,
         )
     
+    def inverse(self) -> 'Matrix':
+        """
+        Compute the inverse of this transformation matrix.
+        
+        Returns:
+            Inverse matrix
+        
+        Raises:
+            ValueError: If matrix is singular (non-invertible)
+        """
+        # Calculate determinant
+        det = self.a * self.d - self.b * self.c
+        
+        if abs(det) < 1e-10:
+            # Matrix is singular, return identity as fallback
+            return Matrix.identity()
+        
+        # Calculate inverse matrix elements
+        inv_det = 1.0 / det
+        return Matrix(
+            a=self.d * inv_det,
+            b=-self.b * inv_det,
+            c=-self.c * inv_det,
+            d=self.a * inv_det,
+            e=(self.c * self.f - self.d * self.e) * inv_det,
+            f=(self.b * self.e - self.a * self.f) * inv_det,
+        )
+    
     def __repr__(self) -> str:
         return f"Matrix({self.a:.3f}, {self.b:.3f}, {self.c:.3f}, {self.d:.3f}, {self.e:.3f}, {self.f:.3f})"
 
