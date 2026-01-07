@@ -9,14 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Dual-Engine SVG Rendering Architecture**
-  - Integrated `resvg-py` as primary production-grade SVG renderer
-  - Retained pure-Python engine as zero-dependency fallback
+  - Integrated `resvg-py` as primary production-grade SVG renderer (required dependency)
+  - Retained pure-Python engine as fallback for edge cases
   - Added `engine` parameter to `convert()` function with three modes:
     - `auto`: Try resvg first, fallback to Python (default)
     - `resvg`: Use resvg only (production)
     - `python`: Use pure-Python engine only (experimental)
   - CLI support: `--engine` flag for explicit engine selection
-  - Optional dependency: Install with `pip install imgshift[svg]` for resvg support
 
 - **Comprehensive Testing Suite**
   - Added `test_all_formats.py`: Tests all format combinations (SVG↔PNG↔JPG↔WEBP)
@@ -42,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTML report generation with proper UTF-8 encoding
 
 ### Technical Details
-- `resvg-py>=0.2.0` added as optional dependency
+- `resvg-py>=0.2.0` added as required dependency
 - Engine dispatcher in `svg/render.py` with fallback logic
 - Loud warnings when falling back from resvg to Python engine
 - No silent failures - all degradation is logged
